@@ -65,7 +65,7 @@ torch::Tensor conv2d_cuda(torch::Tensor input_tensor, torch::Tensor kernel) {
     int width = torch::size(input_tensor, 3);
     int out_height = height - r + 1;
     int out_width = width - r + 1;
-    auto P = torch::empty((batch, outchannels, out_height, out_width), input_tensor.options()); 
+    auto P = torch::empty({batch, outchannels, out_height, out_width}, input_tensor.options()); 
 
     dim3 threads(16, 16, 4);
     dim3 blocks((out_width + threads.x - 1) / threads.x, 
