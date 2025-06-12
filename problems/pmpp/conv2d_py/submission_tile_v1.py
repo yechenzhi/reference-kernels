@@ -32,7 +32,7 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
     int in_b = blockIdx.z / outchannels;
     int out_c = blockIdx.z % outchannels;
     int in_c_init = threadIdx.z;
-    int get_out_times = (outchannels + in_tile_z - 1) / in_tile_z;
+    int get_out_times = (inchannels + in_tile_z - 1) / in_tile_z;
 
     scalar_t out = 0.0f;
 
@@ -49,9 +49,8 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         } else{
             N_s[threadIdx.z][threadIdx.y][threadIdx.x] = 0.0f;
         } 
-        __syncthreads();
-        
-        if (in_w < r && in_h < r && in_c < inchannels) {
+
+        if (threadIdx.y < r && threadIdx.x < r && in_c < inchannels) {
             F_s[threadIdx.z][threadIdx.y][threadIdx.x] = F[out_c * inchannels * r * r +
                                                           in_c * r * r + 
                                                           threadIdx.y * r + 
@@ -66,7 +65,9 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
             for (int in_c_offset = 0; in_c_offset < in_tile_z; ++in_c_offset) {
                 for (int in_h_offset = 0; in_h_offset < r; ++in_h_offset) {
                     for (int in_w_offset = 0; in_w_offset < r; ++in_w_offset) {
-                        out += N_s[in_c_offset][in_h_offset][in_w_offset] * 
+                        int tile_h = threadIdx.y + in_h_offset;
+                        int tile_w = threadIdx.x + in_w_offset;
+                        out += N_s[in_c_offset][tile_h][tile_w] * 
                                F_s[in_c_offset][in_h_offset][in_w_offset];
                     }
                 }
@@ -76,7 +77,7 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         }
         __syncthreads();
     }
-    if (in_w < out_width && in_h < out_height && in_b < batch && out_c < outchannels){ 
+    if (in_w < out_width && in_h < out_height && in_b < batch && out_c < outchannels && threadIdx.x < out_tile_w && threadIdx.y < out_tile_h) { 
         int out_index = in_b * outchannels * out_height * out_width + out_c * out_height * out_width + in_h * out_width + in_w;
         P[out_index] = out;
     }
@@ -98,9 +99,10 @@ torch::Tensor conv2d_cuda(torch::Tensor input_tensor, torch::Tensor kernel) {
     int out_width = width - r + 1;
     auto P = torch::empty({batch, outchannels, out_height, out_width}, input_tensor.options()); 
 
-    dim3 threads(32, 32, 1);
-    dim3 blocks((out_width + threads.x - r + 1 - 1) / (threads.x - r + 1), 
-                (out_height + threads.y - r + 1 - 1) / (threads.y - r + 1), 
+    dim3 threads(IN_TILE_DIM, IN_TILE_DIM, 1);
+    int out_tile_dim = IN_TILE_DIM - r + 1;
+    dim3 blocks((out_width + out_tile_dim - 1) / out_tile_dim, 
+                (out_height + out_tile_dim - 1) / out_tile_dim, 
                  batch * outchannels); 
     
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(input_tensor.scalar_type(), "conv2d_kernel", ([&] {
