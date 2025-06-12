@@ -49,7 +49,8 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         } else{
             N_s[threadIdx.z][threadIdx.y][threadIdx.x] = 0.0f;
         } 
-
+        __syncthreads();
+        
         if (in_w < r && in_h < r && in_c < inchannels) {
             F_s[threadIdx.z][threadIdx.y][threadIdx.x] = F[out_c * inchannels * r * r +
                                                           in_c * r * r + 
@@ -61,12 +62,10 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         } 
         __syncthreads(); 
 
-        if (in_w < out_width && in_h < out_height && out_c < outchannels) {
+        if (in_w < out_width && in_h < out_height && out_c < outchannels && threadIdx.x < out_tile_w && threadIdx.y < out_tile_h) {
             for (int in_c_offset = 0; in_c_offset < in_tile_z; ++in_c_offset) {
                 for (int in_h_offset = 0; in_h_offset < r; ++in_h_offset) {
                     for (int in_w_offset = 0; in_w_offset < r; ++in_w_offset) {
-                        int in_h_idx = in_h + in_h_offset;
-                        int in_w_idx = in_w + in_w_offset;
                         out += N_s[in_c_offset][in_h_offset][in_w_offset] * 
                                F_s[in_c_offset][in_h_offset][in_w_offset];
                     }
@@ -77,10 +76,10 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         }
         __syncthreads();
     }
-    P[in_b * outchannels * out_height * out_width + 
-      out_c * out_height * out_width + 
-      in_h * out_width + 
-      in_w] = out;
+    if (in_w < out_width && in_h < out_height && in_b < batch && out_c < outchannels){ 
+        int out_index = in_b * outchannels * out_height * out_width + out_c * out_height * out_width + in_h * out_width + in_w;
+        P[out_index] = out;
+    }
 }
 
 torch::Tensor conv2d_cuda(torch::Tensor input_tensor, torch::Tensor kernel) {
