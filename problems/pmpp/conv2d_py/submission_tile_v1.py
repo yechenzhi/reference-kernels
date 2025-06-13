@@ -1,6 +1,7 @@
 # writer: @yechenzhi
 # description: conv2d implementation using PyTorch with custom CUDA kernel
 # algorithm: blocks same to the input tiles, then disable those threads that are out of output tiles
+# results:  H100, 25124 ms
 from task import input_t, output_t
 from torch.utils.cpp_extension import load_inline
 import torch
