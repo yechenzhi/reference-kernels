@@ -9,7 +9,7 @@ import torch.nn.functional as F
 conv2d_cuda_source = """
 template <typename scalar_t>
 #define OUT_TILE_DIM 32
-#define IN_TILE_DIM 63
+#define IN_TILE_DIM 64
 #define MAX_KERNEL_DIM 32
 #define IN_TIME_Z 1
 __global__ void conv2d_kernel(const scalar_t* __restrict__ N, 
@@ -56,7 +56,7 @@ __global__ void conv2d_kernel(const scalar_t* __restrict__ N,
         }
        
         if(in_col + 1 < in_width && in_row < in_height && b < batch && in_c < inchannels) {
-            N_s[threadIdx.z][2 * threadIdx.y][2 * threadIdx.x] = N[b * inchannels * in_height * in_width +
+            N_s[threadIdx.z][2 * threadIdx.y][2 * threadIdx.x + 1] = N[b * inchannels * in_height * in_width +
                                                           in_c * in_height * in_width + 
                                                           in_row * in_width + 
                                                           in_col + 1];
