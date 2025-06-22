@@ -1,4 +1,4 @@
-# H100 1627 µs
+# H100 3.25ms
 import torch
 from torch.utils.cpp_extension import load_inline
 from typing import List
@@ -6,19 +6,27 @@ from task import input_t, output_t
 
 gray_cuda_source = """
 template <typename scalar_t>
+#define COARSE_FACTOR 8
 __global__ void gray_kernel(const scalar_t* __restrict__ data,
                            const scalar_t* __restrict__ weights, 
                            scalar_t* __restrict__ C, 
                            int N) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row_st = (blockIdx.y * blockDim.y + threadIdx.y) * COARSE_FACTOR;
+    int col_st = (blockIdx.x * blockDim.x + threadIdx.x) * COARSE_FACTOR;
 
-    if (row < N && col < N) {
-        scalar_t sum = 0.0f;
-        for (int i = 0; i < 3; ++i) {
-            sum += data[row * N * 3 + col * 3 + i] * weights[i];
+    for(int i = 0; i < COARSE_FACTOR; ++i) {
+        for(int j = 0; j < COARSE_FACTOR; ++j) {
+            int row = row_st + i;
+            int col = col_st + j;
+
+            if (row < N && col < N) {
+                scalar_t sum = 0.0f;
+                for (int k = 0; k < 3; ++k) {
+                    sum += data[row * N * 3 + col * 3 + k] * weights[k];
+                }
+                C[row * N + col] = sum;   
+            }
         }
-        C[row * N + col] = sum;   
     }
 }
 
@@ -30,7 +38,7 @@ torch::Tensor gray_cuda(torch::Tensor data, torch::Tensor weights) {
     auto C = torch::empty({N, N}, data.options()); 
 
     dim3 threads(32, 32, 1);
-    dim3 blocks((N + threads.x - 1) / threads.x, (N + threads.x - 1) / threads.x, 1);
+    dim3 blocks((N + threads.x * COARSE_FACTOR - 1) / (threads.x * COARSE_FACTOR), (N + threads.x * COARSE_FACTOR - 1) / (threads.x * COARSE_FACTOR), 1);
     
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(data.scalar_type(), "gray_kernel", ([&] {
         gray_kernel<scalar_t><<<blocks, threads>>>(
