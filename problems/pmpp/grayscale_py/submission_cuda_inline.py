@@ -15,7 +15,7 @@ __global__ void gray_kernel(const scalar_t* __restrict__ data,
     if (row < N && col < N) {
         scalar_t sum = 0.0f;
         for (int i = 0; i < 3; ++i) {
-            sum += data[i * N * N + row * N + col] * weights[i];
+            sum += data[row * N * 3 + col * 3 + i] * weights[i];
         }
         C[row * N + col] = sum;   
     }
@@ -26,7 +26,7 @@ torch::Tensor gray_cuda(torch::Tensor data, torch::Tensor weights) {
     TORCH_CHECK(weights.device().is_cuda(), "Tensor weights must be a CUDA tensor");
     
     int N = torch::size(data, 0);  
-    auto C = torch::empty({N, N}); 
+    auto C = torch::empty({N, N}, data.options()); 
 
     dim3 threads(32, 32, 1);
     dim3 blocks((N + threads.x - 1) / threads.x, (N + threads.x - 1) / threads.x, 1);
