@@ -5,7 +5,7 @@ from task import input_t, output_t
 
 gray_cuda_source = """
 template <typename scalar_t>
-__global__ void gray_kernel(const scalar_t* __restrict__ data 
+__global__ void gray_kernel(const scalar_t* __restrict__ data,
                            const scalar_t* __restrict__ weights, 
                            scalar_t* __restrict__ C, 
                            int N) {
@@ -52,7 +52,7 @@ torch::Tensor gray_cuda(torch::Tensor data, torch::Tensor weights) {
 gray_cpp_source = """
 #include <torch/extension.h>
 
-torch::Tensor gray_cuda(torch::Tensor data, torch::Tensor weitghs);
+torch::Tensor gray_cuda(torch::Tensor data, torch::Tensor weights);
 """
 
 gray_module = load_inline(
