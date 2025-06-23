@@ -1,17 +1,31 @@
-# H100 3.21 ms，pytorch 200 us
+# H100 pytorch 200 us
+# c = 8, 41 us
+# c = 16, 42 us
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
 histogram_cuda_source = """
 template <typename scalar_t>
+#define COARSE_FACTOR 4
 __global__ void histogram_kernel(const scalar_t* __restrict__ data,
                            int* __restrict__ C, 
                            int N) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < N){
-        int value = data[idx];
-        atomicAdd(&C[value], 1);
+    __shared__ int C_s[256];
+    if (threadIdx.x < 256) {
+        C_s[threadIdx.x] = 0; 
+    }
+    __syncthreads();
+           
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    for(int i = tid; i < N; i += blockDim.x * gridDim.x) {
+        int value = data[i];
+        atomicAdd(&C_s[value], 1);
+    }
+    __syncthreads();
+
+    if (threadIdx.x < 256) {
+        atomicAdd(&C[threadIdx.x], C_s[threadIdx.x]);   
     }
 }
 
@@ -23,7 +37,7 @@ torch::Tensor histogram_cuda(torch::Tensor data) {
     auto C = torch::zeros({256}, options); 
 
     dim3 threads(1024, 1, 1);
-    dim3 blocks((N + threads.x - 1) / threads.x, 1, 1);
+    dim3 blocks((N + threads.x * COARSE_FACTOR - 1) / (threads.x * COARSE_FACTOR), 1, 1);
     
     AT_DISPATCH_INTEGRAL_TYPES(data.scalar_type(), "histogram_kernel", ([&] {
         histogram_kernel<scalar_t><<<blocks, threads>>>(

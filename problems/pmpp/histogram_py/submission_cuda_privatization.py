@@ -1,4 +1,4 @@
-# H100 3.21 ms，pytorch 200 us
+# H100 120 us，pytorch 200 us
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
@@ -8,10 +8,20 @@ template <typename scalar_t>
 __global__ void histogram_kernel(const scalar_t* __restrict__ data,
                            int* __restrict__ C, 
                            int N) {
+    __shared__ int C_s[256];
+    if (threadIdx.x < 256) {
+        C_s[threadIdx.x] = 0; 
+    }
+    __syncthreads();
+           
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N){
         int value = data[idx];
-        atomicAdd(&C[value], 1);
+        atomicAdd(&C_s[value], 1);
+    }
+    __syncthreads();
+    if (threadIdx.x < 256) {
+        atomicAdd(&C[threadIdx.x], C_s[threadIdx.x]);   
     }
 }
 
