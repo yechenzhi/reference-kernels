@@ -4,7 +4,7 @@ import torch
 
 mm_cuda_source = """
 template <typename scalar_t>
-#define TILE_DIM 32
+#define TILE_DIM 16
 __global__ void mm_kernel(const scalar_t* __restrict__ a, 
                            const scalar_t* __restrict__ b, 
                            scalar_t* __restrict__ P,
@@ -14,8 +14,8 @@ __global__ void mm_kernel(const scalar_t* __restrict__ a,
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    __shared__ scalar_t a_s[TILE_DIM][TILE_DIM];
-    __shared__ scalar_t b_s[TILE_DIM][TILE_DIM];
+    __shared__ float a_s[TILE_DIM][TILE_DIM];
+    __shared__ float b_s[TILE_DIM][TILE_DIM];
 
     float sum = 0.0f;
     for (int i = 0; i < (k + TILE_DIM - 1) / TILE_DIM; ++i) {
