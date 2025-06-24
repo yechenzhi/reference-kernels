@@ -9,25 +9,31 @@ __global__ void cumsum_kernel(const scalar_t* __restrict__ data,
                             scalar_t* __restrict__ output,
                             scalar_t* __restrict__ partialSums,
                             int N) {
+    __shared__ scalar_t buffer_s[BLOCK_DIM];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < N) {  
-        output[idx] = data[idx];
+        buffer_s[threadIdx.x] = data[idx];
+    } else {
+        buffer_s[threadIdx.x] = 0.0f;
     }
     __syncthreads();
 
     for(int stride = 1; stride < BLOCK_DIM; stride *= 2) {
         scalar_t v = 0.0f;
         if(threadIdx.x >= stride){
-            v = output[idx - stride];
+            v = buffer_s[threadIdx.x - stride];
         }
         __syncthreads();
         if(threadIdx.x >= stride) {
-            output[idx] += v;
+            buffer_s[threadIdx.x] += v;
         }
         __syncthreads();
     }
     if (threadIdx.x == BLOCK_DIM - 1) {
-        partialSums[blockIdx.x] = output[idx];
+        partialSums[blockIdx.x] = buffer_s[threadIdx.x];
+    }
+    if (idx < N){
+        output[idx] = buffer_s[threadIdx.x];
     }
 }
 
