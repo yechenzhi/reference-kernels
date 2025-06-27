@@ -4,6 +4,8 @@
 # CUDA H100: COARSE=8, 102 us
 # CUDA H100: COARSE=16, 102 us
 
+# CUDA shuf: 99 us
+ 
 
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
@@ -11,7 +13,8 @@ from task import input_t, output_t
 vectorsum_cuda_source = """
 template <typename scalar_t>
 #define BLOCK_DIM 1024
-#define COARSE_FACTOR 16
+#define COARSE_FACTOR 4
+#define WARP_SIZE 32
 __global__ void vectorsum_kernel(const scalar_t* __restrict__ data, 
                             float* __restrict__ output,
                             int N) {
@@ -28,14 +31,24 @@ __global__ void vectorsum_kernel(const scalar_t* __restrict__ data,
     data_s[threadIdx.x] = threadSum;
     __syncthreads();
 
-    for (int stride = BLOCK_DIM / 2; stride > 0; stride /= 2) {
+    for (int stride = BLOCK_DIM / 2; stride > WARP_SIZE; stride /= 2) {
         if (threadIdx.x < stride) {
             data_s[threadIdx.x] += data_s[threadIdx.x + stride];
         }
         __syncthreads();
     }
+
+    float sum = 0.0f;
+    if (threadIdx.x < WARP_SIZE) {
+        sum = data_s[threadIdx.x] + data_s[threadIdx.x + WARP_SIZE];
+
+        for (int stride = WARP_SIZE / 2; stride > 0; stride /= 2) {
+            sum += __shfl_down_sync(0xFFFFFFFF, sum, stride);
+        }
+    } 
+
     if (threadIdx.x == 0) {
-        atomicAdd(output, data_s[0]);
+        atomicAdd(output, sum);
     }
 }
 
