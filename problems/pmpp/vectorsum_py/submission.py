@@ -1,5 +1,3 @@
-#!POPCORN leaderboard vectorsum_py
-
 import torch
 import triton
 import triton.language as tl
@@ -44,7 +42,7 @@ def _custom_kernel(data: input_t) -> output_t:
     output = torch.zeros(1, device=data.device, dtype=data.dtype)
 
     # Configure kernel
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 2048 * 2
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     # Launch kernel
