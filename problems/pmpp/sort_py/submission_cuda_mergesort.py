@@ -1,11 +1,13 @@
-import torch
+#H100, pyrorch 6897 us
+#H100, mergesort 38700 us
+#todo: shared memory, odd_even sort
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
 sort_cuda_source = """
 #define BLOCK_DIM 1024
 #define COARSE_FACTOR1 2
-#define COARSE_FACTOR2 16
+#define COARSE_FACTOR2 8
 #define COARSE_THREASHOLD 512
 template <typename scalar_t>
 __device__ int coRank(const scalar_t* A, const scalar_t* B, int m, int n, int k) {

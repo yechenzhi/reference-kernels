@@ -1,4 +1,5 @@
 # H100 pytorch 200 us
+# c= 4, 51 us
 # c = 8, 41 us
 # c = 16, 42 us
 import torch

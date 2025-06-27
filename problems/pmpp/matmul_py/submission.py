@@ -33,7 +33,7 @@ __global__ void mm_kernel(const scalar_t* __restrict__ a,
         __syncthreads();
 
         for (int j = 0; j < TILE_DIM; ++j) {
-            sum += a_s[threadIdx.y][j] * b_s[j][threadIdx.x];
+            sum = fmaf(a_s[threadIdx.y][j], b_s[j][threadIdx.x], sum);
         }
         __syncthreads();
     }

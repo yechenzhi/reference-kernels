@@ -1,4 +1,5 @@
-import torch
+# pytorch H100: 1037 us
+# CUDA H100: 3.2 ms
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 

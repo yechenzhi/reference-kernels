@@ -13,7 +13,7 @@ from task import input_t, output_t
 vectorsum_cuda_source = """
 template <typename scalar_t>
 #define BLOCK_DIM 1024
-#define COARSE_FACTOR 4
+#define COARSE_FACTOR 8
 #define WARP_SIZE 32
 __global__ void vectorsum_kernel(const scalar_t* __restrict__ data, 
                             float* __restrict__ output,
