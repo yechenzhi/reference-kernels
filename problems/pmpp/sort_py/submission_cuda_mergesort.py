@@ -3,10 +3,11 @@ from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
 sort_cuda_source = """
-template <typename scalar_t>
 #define BLOCK_DIM 1024
 #define COARSE_FACTOR1 2
-#define COARSE_FACTOR2 8
+#define COARSE_FACTOR2 16
+#define COARSE_THREASHOLD 512
+template <typename scalar_t>
 __device__ int coRank(const scalar_t* A, const scalar_t* B, int m, int n, int k) {
     int iLow = (k > n) ? (k - n) : 0;
     int iHigh = (k < m) ? k : m;
@@ -43,7 +44,7 @@ __global__ void merge_sort_kernel(const scalar_t* __restrict__ src,
                                   scalar_t* __restrict__ dst, 
                                   int N,
                                   int width) {
-    int COARSE_FACTOR = width > BLOCK_DIM ? COARSE_FACTOR1 : COARSE_FACTOR2;
+    int COARSE_FACTOR = width < COARSE_THREASHOLD ? COARSE_FACTOR1 : COARSE_FACTOR2;
     int k_start = (blockIdx.x * blockDim.x + threadIdx.x) * COARSE_FACTOR;
 
     if(k_start >= N) {
@@ -83,22 +84,21 @@ torch::Tensor sort_cuda(torch::Tensor data) {
 
     int N = torch::size(data, 0);
     int BLOCK_NUM = (N + BLOCK_DIM - 1) / BLOCK_DIM;
-    auto tmp_data = torch::empty_like(data);
+    auto src = data;
+    auto dst = torch::empty_like(data);
 
     for(int width = 1; width < N; width *= 2) {
-        int COARSE_FACTOR = width > BLOCK_DIM? COARSE_FACTOR1 : COARSE_FACTOR2;
+        int COARSE_FACTOR = width < COARSE_THREASHOLD? COARSE_FACTOR1 : COARSE_FACTOR2;
         int num_blocks = (N + BLOCK_DIM * COARSE_FACTOR - 1) / (BLOCK_DIM * COARSE_FACTOR);
         AT_DISPATCH_FLOATING_TYPES_AND_HALF(data.scalar_type(), "merge_sort_kernel", ([&] {
             merge_sort_kernel<scalar_t><<<num_blocks, BLOCK_DIM>>>(
-                data.data_ptr<scalar_t>(),
-                tmp_data.data_ptr<scalar_t>(),
+                src.data_ptr<scalar_t>(),
+                dst.data_ptr<scalar_t>(),
                 N,
                 width
             );
         }));
-        auto temp = data;
-        data = tmp_data;
-        tmp_data = temp;
+        std::swap(src, dst);
     }
 
     cudaError_t err = cudaGetLastError();
@@ -106,7 +106,7 @@ torch::Tensor sort_cuda(torch::Tensor data) {
         throw std::runtime_error(cudaGetErrorString(err));
     }
 
-    return data;
+    return src;
 }
 """
 

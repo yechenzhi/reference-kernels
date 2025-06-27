@@ -62,13 +62,6 @@ __global__ void merge_sort_kernel(const scalar_t* __restrict__ src,
         n = (pair_start + pair_width < N) ? width : (N - pair_start - width);
     }
 
-    if (n == 0) {
-        for (int i = 0; i < COARSE_FACTOR && (k_start + i < N); ++i) {
-            dst[k_start + i] = src[k_start + i];
-        }
-        return;
-    }
-
     int k_end = k_start + COARSE_FACTOR < N ? k_start + COARSE_FACTOR : N;
     k_end = k_end < pair_start + m + n ? k_end : pair_start + m + n;
 
@@ -88,32 +81,42 @@ __global__ void merge_sort_kernel(const scalar_t* __restrict__ src,
 torch::Tensor sort_cuda(torch::Tensor data) {
     TORCH_CHECK(data.device().is_cuda(), "data must be a CUDA tensor");
 
-    int N = torch::size(data, 0);
-    int BLOCK_NUM = (N + BLOCK_DIM - 1) / BLOCK_DIM;
-    auto tmp_data = torch::empty_like(data);
+    int N = data.size(0);
+    if (N <= 1) {
+        return data.clone();
+    }
 
-    for(int width = 1; width < N; width *= 2) {
-        int COARSE_FACTOR = width > BLOCK_DIM? COARSE_FACTOR1 : COARSE_FACTOR2;
+    // Use explicit src and dst buffers for ping-ponging.
+    // Start with a clone of data as the source to avoid modifying the input tensor.
+    auto src = data.clone();
+    auto dst = torch::empty_like(data);
+
+    for (int width = 1; width < N; width *= 2) {
+        int COARSE_FACTOR = width > BLOCK_DIM ? COARSE_FACTOR1 : COARSE_FACTOR2;
         int num_blocks = (N + BLOCK_DIM * COARSE_FACTOR - 1) / (BLOCK_DIM * COARSE_FACTOR);
+        
         AT_DISPATCH_FLOATING_TYPES_AND_HALF(data.scalar_type(), "merge_sort_kernel", ([&] {
             merge_sort_kernel<scalar_t><<<num_blocks, BLOCK_DIM>>>(
-                data.data_ptr<scalar_t>(),
-                tmp_data.data_ptr<scalar_t>(),
+                src.data_ptr<scalar_t>(),
+                dst.data_ptr<scalar_t>(),
                 N,
-                width
-            );
+                width);
         }));
-        auto temp = data;
-        data = tmp_data;
-        tmp_data = temp;
+        // Swap the roles of src and dst for the next iteration.
+        std::swap(src, dst);
     }
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
+        // A device-side assert or error might have occurred.
+        // Also call synchronize to be sure.
+        cudaDeviceSynchronize();
+        err = cudaGetLastError();
         throw std::runtime_error(cudaGetErrorString(err));
     }
-
-    return data;
+    
+    // After the loop, src holds the tensor with the final sorted data.
+    return src;
 }
 """
 
